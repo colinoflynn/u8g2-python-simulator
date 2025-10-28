@@ -14,6 +14,7 @@ import sys
 import time
 from collections import OrderedDict
 from typing import Optional, Tuple, Sequence
+from datetime import datetime
 
 try:
     import tkinter as tk
@@ -59,7 +60,8 @@ class U8G2SimLCD:
     def __init__(self, width: int = 128, height: int = 64, scale: float = 6.0,
                  title: str = "u8g2 Live Exec", aspect: Optional[float] = None, invert: bool = False,
                  cache_size: int = 64,
-                 u8g2_dir: str = "",):
+                 u8g2_dir: str = "",
+                 gif_duration_ms: int = 33):
         self.width = int(width)
         self.height = int(height)
         self.scale_x = float(scale)
@@ -97,7 +99,16 @@ class U8G2SimLCD:
         self.canvas.pack()
         self.photo = None
 
-        # Bind inverse toggle + cache clear
+        # --- recording state ---
+        self._rec_on = False
+        self._gif_frames = []
+        self._gif_duration_ms = gif_duration_ms   # default ~30 FPS
+        self._gif_outpath = None
+
+        # --- keys: screenshot + record toggle ---
+        self.root.bind("<KeyPress-s>", lambda e: self.savePNG())       # screenshot
+        self.root.bind("<KeyPress-g>", lambda e: self.toggleGIFRecord())  # start/stop GIF
+        # inverse toggle + cache clear
         self.root.bind("<KeyPress-i>", lambda e: self.setInverse(not self.inverse))
         self.root.bind("<KeyPress-c>", lambda e: self.clearBitmapCache())
 
@@ -312,6 +323,12 @@ class U8G2SimLCD:
         if self.inverse:
             img = ImageOps.invert(img.convert("L"))
         disp = img.resize((out_w, out_h), resample=Image.NEAREST).convert("RGB")
+
+        if self._rec_on:
+            # use the same image but in palette mode for GIF
+            frame = disp.convert("P")
+            self._gif_frames.append(frame)
+
         self.photo = ImageTk.PhotoImage(disp)
         self.canvas.create_image(0, 0, image=self.photo, anchor="nw")
 
@@ -324,6 +341,87 @@ class U8G2SimLCD:
         self.canvas.create_text(4, 4, text=f"{fps} FPS", anchor="nw", fill="#00ff00",
                                 font=("Courier", max(8, int(self.scale_y) * 3 // 2)), tags="fps_text")
 
+
+    # ---- screenshot support
+    def _ts(self) -> str:
+        return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    def _get_view_image(self, scale: float = 1.0):
+        """
+        Returns a Pillow Image of what you see on screen:
+        - applies invert if enabled
+        - rescales using current scale_x/scale_y
+        - optional extra 'scale' for higher export resolution
+        """
+        from PIL import Image, ImageOps
+        img = self.img
+        if self.inverse:
+            img = ImageOps.invert(img.convert("L"))
+        out_w = int(round(self.width  * self.scale_x * scale))
+        out_h = int(round(self.height * self.scale_y * scale))
+        if out_w <= 0 or out_h <= 0:
+            out_w, out_h = self.width, self.height
+        return img.resize((out_w, out_h), resample=Image.NEAREST).convert("P")  # palette OK for GIF/PNG
+
+    def savePNG(self, path: str | None = None, scale: float = 1.0) -> str:
+        """
+        Save a PNG of the current view (honors invert & aspect).
+        - path: optional; default auto-named 'screenshot_YYYYMMDD_HHMMSS.png'
+        - scale: extra multiplier on top of current scale_x/scale_y
+        """
+        if path is None:
+            path = f"screenshot_{self._ts()}.png"
+        img = self._get_view_image(scale=scale)
+        img.save(path)
+        print(f"[SIM] Saved screenshot: {path}")
+        return path
+
+    def toggleGIFRecord(self, path: str | None = None):
+        """
+        Press 'g' to start/stop recording the on-screen view.
+        When stopping, writes an animated GIF.
+        """
+        if not self._rec_on:
+            self._rec_on = True
+            self._gif_frames = []
+            self._gif_outpath = path or f"recording_{self._ts()}.gif"
+            print(f"[SIM] GIF recording STARTED -> {self._gif_outpath}")
+        else:
+            self._rec_on = False
+            self._finalizeGIF()
+
+    def _finalizeGIF(self):
+        if not self._gif_frames:
+            print("[SIM] GIF recording stopped (no frames).")
+            return
+        # Ensure palette mode for GIF; frames are already 'P' from _get_view_image()
+        first = self._gif_frames[0]
+        rest = self._gif_frames[1:]
+        first.save(
+            self._gif_outpath,
+            save_all=True,
+            append_images=rest,
+            duration=self._gif_duration_ms,
+            loop=0,
+            optimize=False,
+            disposal=2,
+        )
+        print(f"[SIM] GIF saved: {self._gif_outpath} ({len(self._gif_frames)} frames)")
+        # reset
+        self._gif_frames = []
+        self._gif_outpath = None
+
+
+    def _on_close(self):
+        # finalize GIF if recording
+        if getattr(self, "_rec_on", False):
+            self._rec_on = False
+            try:
+                self._finalizeGIF()
+            except Exception as e:
+                print(f"[SIM] GIF finalize error on close: {e}")
+        self.root.quit()
+        self.root.destroy()
 
 class LivePythonRenderer:
     """Watches a Python file. Expects it to define draw(lcd) or demo_draw(lcd)."""
@@ -420,7 +518,7 @@ def main():
     args = ap.parse_args()
 
     lcd = U8G2SimLCD(args.width, args.height, scale=args.scale, aspect=args.aspect, invert=args.invert,
-                     cache_size=args.cache_size, u8g2_dir=args.u8g2_root)
+                     cache_size=args.cache_size, u8g2_dir=args.u8g2_root, gif_duration_ms=200)
     renderer = LivePythonRenderer(lcd, args.file, poll_ms=args.poll)
     renderer.start()
     lcd.root.mainloop()
