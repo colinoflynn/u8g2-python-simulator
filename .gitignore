@@ -1,1 +1,6 @@
 u8g2/
+fontcache/
+*.png
+*.pil
+*.bpf
+*.gif
