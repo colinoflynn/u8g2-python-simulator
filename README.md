@@ -58,27 +58,54 @@ def draw(lcd):
 
 Features:
 
-* Similar API to Arduino (or C/C++) for easy copying
-* Converts BPF fonts automatically, just need copy of u8g2 repository. Copies to local cache.
+* Similar API to Arduino (or C/C++) for easy copying back & forth
 * Automatically reloads source file for real-time development
+* Loads BPF fonts automatically from your copy of u8g2 repository (converts to PIL format)
 * Can save screenshot or animated GIF
-* Adjustable aspect ratios
+* Adjustable aspect ratios to reflect hardware
 * tkinter based, minimal Python3 requirements
+
+Known Issues:
+
+* Does not map font names to files
 
 ## Usage
 
-* `git clone` repository
-* Install Pillow with `pip install pillow`
-* (Optional) Clone u8g2 somewhere
-* Run the demo with `u8g2_sim.py -f demo/demo_draw.py`
+### Quick Start
 
-I suggest to point to your u8g2 root directory with the ` --u8g2-root` option, like:
-```u8g2_sim.py --u8g2-root ../u8g2 -f demo/demo_draw.py```
+```
+pip install pillow
+git clone https://github.com/colinoflynn/u8g2-python-simulator.git
+git clone https://github.com/olikraus/u8g2
+cd u8g2-python-simulator
+python3 u8g2_sim.py --u8g2-root ../u8g2 -f demo/demo_draw.py
+```
+Cloning u8g2 and pointing to it is optional, but if included the fonts from that repository will be used (otherwise a default font is used).
 
-This will get you the required font files. I haven't yet converted the font names, so you
-need to look at the font filenames and use that instead of the real u8g2 font names.
+You can then open the `demo_draw.py` file in your preferred code editor. On saving the file you'll see changes reflected in the LCD simulator.
 
-## Font Conversion/Caching
+### Command Line Options
+
+```
+usage: u8g2_sim.py [-h] --file FILE [--width WIDTH] [--height HEIGHT] [--scale SCALE] [--aspect ASPECT] [--invert]
+                   [--poll POLL] [--cache-size CACHE_SIZE] [--u8g2-root U8G2_ROOT]
+
+Live-reloading u8g2-style LCD prototyper (with bitmap cache)
+
+options:
+  -h, --help               show this help message and exit
+  --file FILE, -f FILE     Path to Python file providing draw(lcd) or demo_draw(lcd)
+  --width WIDTH            LCD width in pixels (default 128)
+  --height HEIGHT          LCD height in pixels (default 64)
+  --scale SCALE            Base pixel scale (X axis) (default 6.0)
+  --aspect ASPECT          Pixel aspect ratio Y/X (e.g., 1.116); if omitted, uses 1.0
+  --invert                 Invert the display (white-on-black view)
+  --poll POLL              Polling interval in ms for file changes (default 200)
+  --cache-size CACHE_SIZE  Bitmap cache size (number of images)
+  --u8g2-root U8G2_ROOT    Location of u8g2 root, used to find fonts
+```
+
+### Font Conversion/Caching
 
 Fonts will be cached into a folder called `fontcache`. This will be relative to where you launch
 the program from.
