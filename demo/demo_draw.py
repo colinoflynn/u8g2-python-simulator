@@ -1,4 +1,4 @@
-# demo_draw_v2.py
+# demo_draw.py
 # Demonstrates: drawXBMfile, drawPBMfile, drawBitmap1
 
 import time, math, os
